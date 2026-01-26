@@ -3,10 +3,12 @@ Wan2.1 text-to-video generation example.
 This example demonstrates how to use LightX2V with Wan2.1 model for T2V generation.
 """
 
+import asyncio
 import os
 import threading
 
 from lightx2v import LightX2VPipeline
+from lightx2v.shared_queue import GENERATION_LOCK, generation_slot
 
 lightx2v_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 model_path = os.path.join(lightx2v_root, "models", "Wan2.1-T2V-1.3B")
@@ -25,7 +27,6 @@ DEFAULT_SAVE_NAME = "output.mp4"
 
 _PIPELINE = None
 _PIPELINE_LOCK = threading.Lock()
-_GENERATE_LOCK = threading.Lock()
 
 
 def _create_pipeline() -> LightX2VPipeline:
@@ -75,7 +76,7 @@ def generate_video(
         save_result_path = os.path.join(save_dir, DEFAULT_SAVE_NAME)
 
     pipe = get_pipeline()
-    with _GENERATE_LOCK:
+    with GENERATION_LOCK:
         pipe.generate(
             seed=seed,
             prompt=prompt,
@@ -83,6 +84,23 @@ def generate_video(
             save_result_path=save_result_path,
         )
     return save_result_path
+
+
+async def generate_video_async(
+    prompt: str,
+    negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
+    seed: int = DEFAULT_SEED,
+    save_result_path: str | None = None,
+    request_id: str | None = None,
+) -> str:
+    async with generation_slot(request_id=request_id):
+        return await asyncio.to_thread(
+            generate_video,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=seed,
+            save_result_path=save_result_path,
+        )
 
 
 def main() -> None:
