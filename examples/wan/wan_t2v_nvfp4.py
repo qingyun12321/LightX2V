@@ -3,11 +3,16 @@ Wan2.1 text-to-video generation example.
 This example demonstrates how to use LightX2V with Wan2.1 model for T2V generation.
 """
 
+import os
+
 from lightx2v import LightX2VPipeline
+
+lightx2v_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+model_path = os.path.join(lightx2v_root, "models", "Wan2.1-T2V-1.3B")
 
 # Initialize pipeline for Wan2.1 T2V task
 pipe = LightX2VPipeline(
-    model_path="/path/to/Wan2.1-T2V-1.3B",
+    model_path=model_path,
     model_cls="wan2.1_distill",
     task="t2v",
 )
@@ -15,7 +20,11 @@ pipe = LightX2VPipeline(
 # Alternative: create generator from config JSON file
 # pipe.create_generator(config_json="../configs/wan/wan_t2v.json")
 
-pipe.enable_quantize(dit_quantized=True, dit_quantized_ckpt="lightx2v/Wan-NVFP4/wan2.1_t2v_1_3b_nvfp4_lightx2v_4step.safetensors", quant_scheme="nvfp4")
+pipe.enable_quantize(
+    dit_quantized=True,
+    dit_quantized_ckpt=os.path.join(model_path, "wan2.1_t2v_1_3b_nvfp4_lightx2v_4step.safetensors"),
+    quant_scheme="nvfp4",
+)
 
 # Create generator with specified parameters
 pipe.create_generator(
@@ -31,7 +40,7 @@ pipe.create_generator(
 seed = 42
 prompt = "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage."
 negative_prompt = "镜头晃动，色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走"
-save_result_path = "/path/to/save_results/output.mp4"
+save_result_path = os.path.join(lightx2v_root, "save_results", "output.mp4")
 
 pipe.generate(
     seed=seed,

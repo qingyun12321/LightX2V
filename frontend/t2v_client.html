@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kokoni 文生视频</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg: #0f1115;
+      --bg-soft: #151a22;
+      --panel: rgba(23, 28, 37, 0.92);
+      --panel-border: rgba(148, 162, 191, 0.18);
+      --text: #f2f4f7;
+      --text-soft: rgba(242, 244, 247, 0.75);
+      --text-faint: rgba(242, 244, 247, 0.5);
+      --accent: #d0b48c;
+      --accent-2: #9aa6ba;
+      --shadow: 0 18px 40px rgba(4, 6, 10, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(120% 120% at 0% 0%, rgba(170, 184, 210, 0.08), transparent 55%),
+        radial-gradient(120% 120% at 100% 0%, rgba(208, 180, 140, 0.08), transparent 60%),
+        linear-gradient(180deg, var(--bg) 0%, #0b0e13 100%);
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: auto;
+      z-index: -1;
+      filter: blur(0px);
+      opacity: 0.5;
+    }
+
+    body::before {
+      width: 520px;
+      height: 520px;
+      top: -160px;
+      right: -140px;
+      background: radial-gradient(circle at center, rgba(130, 145, 175, 0.18), transparent 70%);
+      animation: ink-drift 22s ease-in-out infinite;
+    }
+
+    body::after {
+      width: 640px;
+      height: 640px;
+      bottom: -240px;
+      left: -220px;
+      background: radial-gradient(circle at center, rgba(208, 180, 140, 0.14), transparent 70%);
+      animation: ink-drift 28s ease-in-out infinite reverse;
+    }
+
+    @keyframes ink-drift {
+      0%,
+      100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(30px, -24px, 0) scale(1.05);
+      }
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 36px 24px 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      animation: wash-in 0.9s ease both;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(148, 162, 191, 0.12);
+      color: var(--accent);
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      font-size: 12px;
+      width: fit-content;
+    }
+
+    .badge::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: inline-block;
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 0.7;
+      }
+      50% {
+        transform: scale(1.4);
+        opacity: 1;
+      }
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.4rem, 4vw, 3.4rem);
+      line-height: 1.1;
+      font-family: "Noto Serif SC", "Songti SC", serif;
+      letter-spacing: 0.03em;
+    }
+
+    .subtitle {
+      margin: 0;
+      max-width: 720px;
+      color: var(--text-soft);
+      font-size: 1.02rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+      animation: wash-in 0.9s ease both;
+    }
+
+    .panel:nth-of-type(1) {
+      animation-delay: 0.1s;
+    }
+
+    .panel:nth-of-type(2) {
+      animation-delay: 0.2s;
+    }
+
+    @keyframes wash-in {
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    label {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 162, 191, 0.25);
+      background: rgba(10, 14, 20, 0.7);
+      color: var(--text);
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 0.95rem;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: var(--text-faint);
+    }
+
+    textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 120px;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--text-faint);
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: none;
+      padding: 12px 20px;
+      border-radius: 12px;
+      background: linear-gradient(120deg, #d0b48c, #c2cce0);
+      color: #0b0f15;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 12px 22px rgba(6, 9, 14, 0.4);
+    }
+
+    button:hover {
+      transform: translateY(-1px) scale(1.01);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .status {
+      font-size: 0.9rem;
+      color: var(--text-soft);
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(8, 12, 18, 0.7);
+      border: 1px solid rgba(148, 162, 191, 0.18);
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status[data-state="loading"]::before {
+      content: "";
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid rgba(208, 180, 140, 0.6);
+      border-top-color: transparent;
+      display: inline-block;
+      animation: spin 1.2s linear infinite;
+    }
+
+    .status[data-state="error"] {
+      color: #ffb3a7;
+      border-color: rgba(255, 179, 167, 0.35);
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .preview {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .video-shell {
+      flex: 1;
+      min-height: 260px;
+      border-radius: 16px;
+      border: 1px dashed rgba(148, 162, 191, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8, 12, 18, 0.6);
+      position: relative;
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: var(--text-faint);
+      font-size: 0.95rem;
+      padding: 12px;
+    }
+
+    .download {
+      display: none;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <span class="badge">远程推理</span>
+      <h1>KOKONI</h1>
+      <p class="subtitle">
+        以文字驱动影像，在留白之间见山河。
+      </p>
+    </header>
+
+    <section class="grid">
+      <div class="panel">
+        <form id="t2v-form">
+          <div>
+            <label for="prompt">提示词</label>
+            <textarea id="prompt" placeholder="描绘你想生成的场景……"></textarea>
+          </div>
+
+          <div>
+            <label for="negative">反向提示词（可选）</label>
+            <textarea id="negative" placeholder="描述需要避开的内容……"></textarea>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="seed">随机种子（可选）</label>
+              <input id="seed" type="number" placeholder="42" />
+              <div class="hint">留空则使用默认种子。</div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="generate" type="submit">生成视频</button>
+            <span class="hint">生成可能需要数分钟，请保持页面开启。</span>
+          </div>
+
+          <div id="status" class="status" data-state="idle">静候生成。</div>
+        </form>
+      </div>
+
+      <div class="panel preview">
+        <div class="video-shell">
+          <video id="result" controls playsinline></video>
+          <div id="placeholder" class="placeholder">
+            正在等候结果，完成后视频将在此呈现。
+          </div>
+        </div>
+        <a id="download" class="download" href="#" download="lightx2v.mp4">下载视频</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("t2v-form");
+    const promptInput = document.getElementById("prompt");
+    const negativeInput = document.getElementById("negative");
+    const seedInput = document.getElementById("seed");
+    const statusEl = document.getElementById("status");
+    const videoEl = document.getElementById("result");
+    const placeholderEl = document.getElementById("placeholder");
+    const downloadEl = document.getElementById("download");
+    const buttonEl = document.getElementById("generate");
+
+    let currentUrl = null;
+    const apiHost = "36.133.236.108:10085";
+    const apiBase = `http://${apiHost}`;
+
+    const setStatus = (message, state) => {
+      statusEl.textContent = message;
+      statusEl.dataset.state = state;
+    };
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const base = apiBase;
+      const prompt = promptInput.value.trim();
+      const negative = negativeInput.value.trim();
+      const seedRaw = seedInput.value.trim();
+
+      if (!prompt) {
+        setStatus("请填写提示词。", "error");
+        return;
+      }
+
+      const payload = {
+        prompt,
+        negative_prompt: negative || null,
+        seed: seedRaw ? Number(seedRaw) : null,
+      };
+
+      buttonEl.disabled = true;
+      setStatus("生成中，请保持页面开启。", "loading");
+
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+        currentUrl = null;
+      }
+      videoEl.style.display = "none";
+      placeholderEl.style.display = "block";
+      downloadEl.style.display = "none";
+
+      try {
+        const response = await fetch(`${base}/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type") || "";
+          let detail = "";
+          if (contentType.includes("application/json")) {
+            const data = await response.json();
+            detail = data.detail || JSON.stringify(data);
+          } else {
+            detail = await response.text();
+          }
+          throw new Error(detail || `HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        currentUrl = URL.createObjectURL(blob);
+        videoEl.src = currentUrl;
+        videoEl.style.display = "block";
+        placeholderEl.style.display = "none";
+        downloadEl.href = currentUrl;
+        downloadEl.style.display = "inline-flex";
+        setStatus("已完成，视频加载成功。", "ready");
+      } catch (error) {
+        setStatus(`请求失败：${error.message}`, "error");
+      } finally {
+        buttonEl.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
