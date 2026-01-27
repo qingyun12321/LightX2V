@@ -4,10 +4,11 @@ import os
 import sys
 import uuid
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import uvicorn
+import shutil
 
 SCRIPT_DIR = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -20,6 +21,7 @@ WAN_T2V_PATH = os.path.join(PROJECT_ROOT, "examples", "wan", "wan_t2v.py")
 WAN_I2V_PATH = os.path.join(PROJECT_ROOT, "examples", "wan", "wan_i2v.py")
 SAVE_DIR = os.path.join(PROJECT_ROOT, "save_results")
 UPLOAD_DIR = os.path.join(SAVE_DIR, "uploads")
+OUTPUT_COPY_PATH = os.path.join(SAVE_DIR, "output.mp4")
 
 
 def _load_module(module_name: str, file_path: str):
@@ -43,6 +45,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def _safe_remove(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -55,6 +65,7 @@ def queue_status(request_id: str | None = None):
 
 @app.post("/generate")
 async def generate_video(
+    background_tasks: BackgroundTasks,
     prompt: str = Form(default=""),
     negative_prompt: str = Form(default=""),
     seed: int | None = Form(default=None),
@@ -124,6 +135,12 @@ async def generate_video(
             if os.path.exists(upload_path):
                 os.remove(upload_path)
 
+    try:
+        shutil.copyfile(output_path, OUTPUT_COPY_PATH)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"failed to save output copy: {exc}")
+
+    background_tasks.add_task(_safe_remove, output_path)
     return FileResponse(output_path, media_type="video/mp4", filename=filename)
 
 
