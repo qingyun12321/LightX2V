@@ -38,6 +38,8 @@ def _create_pipeline() -> LightX2VPipeline:
         model_path=model_path,
         model_cls="wan2.1",
         task="i2v",
+        # Use the full-precision shard directory (index.json) to avoid mixing quantized weights.
+        dit_original_ckpt=model_path,
     )
 
     # Alternative: create generator from config JSON file
