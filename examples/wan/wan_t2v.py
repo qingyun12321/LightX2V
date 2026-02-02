@@ -34,6 +34,8 @@ def _create_pipeline() -> LightX2VPipeline:
         model_path=model_path,
         model_cls="wan2.1",
         task="t2v",
+        # Avoid mixing quantized/distilled checkpoints in the same folder.
+        dit_original_ckpt=os.path.join(model_path, "diffusion_pytorch_model.safetensors"),
     )
 
     # Alternative: create generator from config JSON file
