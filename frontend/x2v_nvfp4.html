@@ -501,16 +501,207 @@
     let previewUrl = null;
     let currentMode = "t2v";
     const apiBase = "https://deployment-11493-utau6vzv-10085.550w.link";
+    let runtimeApiBase = apiBase;
+    const openApiConfig = {
+      base: "https://openapi.suanli.cn",
+      version: "1.0.0",
+      taskId: 1319239,
+      servicePort: 10085,
+      token: "f2ee1c4c-b678-4b3e-850b-e56a6f57bfd3-20260208093806",
+      // Wait up to 5 minutes for cold start + image pulling.
+      readyTimeoutMs: 5 * 60 * 1000,
+    };
 
     const setStatus = (message, state) => {
       statusEl.textContent = message;
       statusEl.dataset.state = state;
     };
 
-    const fetchQueueStatus = async (requestId = "") => {
+    const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    const normalizeCode = (code) =>
+      String(code === undefined || code === null ? "" : code).trim().toLowerCase();
+
+    const isApiSuccess = (payload) => {
+      if (!payload || typeof payload !== "object") {
+        return false;
+      }
+      const code = normalizeCode(payload.code);
+      return code === "0000" || code === "0" || code === "200" || code === "ok" || code === "success";
+    };
+
+    const extractPayloadMessage = (payload) => {
+      if (!payload || typeof payload !== "object") {
+        return "";
+      }
+      const message = payload.message || payload.msg || payload.detail || payload.error || "";
+      if (typeof message === "string") {
+        return message;
+      }
+      if (message && typeof message === "object") {
+        return JSON.stringify(message);
+      }
+      return String(message || "");
+    };
+
+    const isRecoverAlreadyRunning = (message) =>
+      /already|running|active|运行中|已运行|无需恢复|未暂停|must.*paused|任务必须为暂停中/i.test(message);
+
+    const normalizeStatus = (status) =>
+      String(status === undefined || status === null ? "" : status).trim().toLowerCase();
+
+    const isRunningStatus = (status) =>
+      /running|ready|online|available|success|active|启动中|运行中/.test(normalizeStatus(status));
+
+    const extractTaskStatus = (detailPayload) => {
+      if (!detailPayload || typeof detailPayload !== "object") {
+        return "";
+      }
+      const data = detailPayload.data;
+      if (!data || typeof data !== "object") {
+        return "";
+      }
+      return String(data.status || data.task_status || data.taskStatus || "").trim();
+    };
+
+    const extractTaskServiceBaseUrl = (detailPayload) => {
+      if (!detailPayload || typeof detailPayload !== "object") {
+        return "";
+      }
+      const data = detailPayload.data;
+      if (!data || typeof data !== "object") {
+        return "";
+      }
+      const services = Array.isArray(data.services) ? data.services : [];
+      let fallback = "";
+      for (const service of services) {
+        const remotePorts = Array.isArray(service.remote_ports) ? service.remote_ports : [];
+        for (const portItem of remotePorts) {
+          const url = typeof portItem.url === "string" ? portItem.url.trim() : "";
+          if (!url) {
+            continue;
+          }
+          if (!fallback) {
+            fallback = url;
+          }
+          if (Number(portItem.service_port) === Number(openApiConfig.servicePort)) {
+            return url.replace(/\/$/, "");
+          }
+        }
+      }
+      return fallback ? fallback.replace(/\/$/, "") : "";
+    };
+
+    const buildOpenApiHeaders = (token) => ({
+      "Content-Type": "application/json",
+      token,
+      timestamp: String(Date.now()),
+      version: openApiConfig.version,
+    });
+
+    const buildOpenApiGetHeaders = (token) => ({
+      token,
+      timestamp: String(Date.now()),
+      version: openApiConfig.version,
+    });
+
+    const callTaskDetailApi = async (token) => {
+      const response = await fetch(
+        `${openApiConfig.base}/api/deployment/task/detail?task_id=${encodeURIComponent(String(openApiConfig.taskId))}`,
+        {
+          method: "GET",
+          headers: buildOpenApiGetHeaders(token),
+          cache: "no-store",
+        }
+      );
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const detail = extractPayloadMessage(payload) || `HTTP ${response.status}`;
+        throw new Error(`detail 请求失败：${detail}`);
+      }
+
+      if (!isApiSuccess(payload)) {
+        const message = extractPayloadMessage(payload) || `业务码 ${payload && payload.code ? payload.code : "unknown"}`;
+        throw new Error(`detail 失败：${message}`);
+      }
+
+      return payload;
+    };
+
+    const callTaskControlApi = async (action, token) => {
+      const actionPath = action === "recover" ? "recover" : "pause";
+      const response = await fetch(`${openApiConfig.base}/api/deployment/task/${actionPath}`, {
+        method: "POST",
+        headers: buildOpenApiHeaders(token),
+        body: JSON.stringify({ task_id: openApiConfig.taskId }),
+      });
+
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        payload = null;
+      }
+
+      if (!response.ok) {
+        const detail = extractPayloadMessage(payload) || `HTTP ${response.status}`;
+        throw new Error(`${actionPath} 请求失败：${detail}`);
+      }
+
+      if (!isApiSuccess(payload)) {
+        const message = extractPayloadMessage(payload) || `业务码 ${payload && payload.code ? payload.code : "unknown"}`;
+        if (action === "recover" && isRecoverAlreadyRunning(message)) {
+          return payload;
+        }
+        throw new Error(`${actionPath} 失败：${message}`);
+      }
+
+      return payload;
+    };
+
+    const waitForWorkerReady = async (token, timeoutMs = openApiConfig.readyTimeoutMs, intervalMs = 2000) => {
+      const deadline = Date.now() + timeoutMs;
+      let lastStatus = "";
+      let lastBase = "";
+      while (Date.now() < deadline) {
+        let baseToCheck = runtimeApiBase;
+        try {
+          const detail = await callTaskDetailApi(token);
+          const status = extractTaskStatus(detail);
+          const fromDetailBase = extractTaskServiceBaseUrl(detail);
+          if (status) {
+            lastStatus = status;
+          }
+          if (fromDetailBase) {
+            runtimeApiBase = fromDetailBase;
+            baseToCheck = fromDetailBase;
+            lastBase = fromDetailBase;
+          }
+          if (baseToCheck && (!status || isRunningStatus(status))) {
+            const response = await fetch(`${baseToCheck}/health`, { cache: "no-store" });
+            if (response.ok) {
+              return baseToCheck;
+            }
+          }
+        } catch (error) {
+          // Ignore transient connection failures while task is starting.
+        }
+        await sleep(intervalMs);
+      }
+      throw new Error(`任务恢复超时，后端服务尚未就绪。最后状态：${lastStatus || "unknown"}，最后地址：${lastBase || runtimeApiBase || "none"}`);
+    };
+
+    const fetchQueueStatus = async (baseUrl, requestId = "") => {
       try {
         const query = requestId ? `?request_id=${encodeURIComponent(requestId)}` : "";
-        const response = await fetch(`${apiBase}/queue_status${query}`, { cache: "no-store" });
+        const response = await fetch(`${baseUrl}/queue_status${query}`, { cache: "no-store" });
         if (!response.ok) {
           return null;
         }
@@ -578,10 +769,11 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
-      const base = apiBase;
       const prompt = promptInput.value.trim();
       const negative = negativeInput.value.trim();
       const seedRaw = seedInput.value.trim();
+      const openApiToken = openApiConfig.token;
+      let base = runtimeApiBase;
 
       if (!prompt) {
         setStatus("请填写提示词。", "error");
@@ -597,7 +789,9 @@
       }
 
       const payload = new FormData();
-      const requestId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const requestId = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       payload.append("prompt", prompt);
       if (negative) {
         payload.append("negative_prompt", negative);
@@ -611,18 +805,10 @@
       }
 
       buttonEl.disabled = true;
-      const queueStatus = await fetchQueueStatus(requestId);
-      const willQueue = queueStatus && (queueStatus.status === "pending" || queueStatus.processing || queueStatus.pending > 0);
-      if (willQueue) {
-        applyQueueStatus(queueStatus);
-      } else {
-        setStatus("生成中，请保持页面开启。", "loading");
-      }
       let queueTimer = null;
-      queueTimer = window.setInterval(async () => {
-        const status = await fetchQueueStatus(requestId);
-        applyQueueStatus(status);
-      }, 2000);
+      let recoveredTask = false;
+      let pausedTask = false;
+      let requestError = null;
 
       if (currentUrl) {
         URL.revokeObjectURL(currentUrl);
@@ -633,6 +819,39 @@
       downloadEl.style.display = "none";
 
       try {
+        setStatus("正在查询任务状态。", "loading");
+        const detailBefore = await callTaskDetailApi(openApiToken);
+        const statusBefore = extractTaskStatus(detailBefore);
+        const baseBefore = extractTaskServiceBaseUrl(detailBefore);
+        if (baseBefore) {
+          runtimeApiBase = baseBefore;
+          base = baseBefore;
+        }
+
+        if (isRunningStatus(statusBefore)) {
+          setStatus("任务已运行，跳过恢复，等待服务就绪。", "loading");
+        } else {
+          setStatus("任务未运行，正在恢复任务。", "loading");
+          await callTaskControlApi("recover", openApiToken);
+          recoveredTask = true;
+        }
+
+        setStatus("等待服务就绪。", "loading");
+        base = await waitForWorkerReady(openApiToken);
+
+        const queueStatus = await fetchQueueStatus(base, requestId);
+        const willQueue = queueStatus && (queueStatus.status === "pending" || queueStatus.processing || queueStatus.pending > 0);
+        if (willQueue) {
+          applyQueueStatus(queueStatus);
+        } else {
+          setStatus("生成中，请保持页面开启。", "loading");
+        }
+
+        queueTimer = window.setInterval(async () => {
+          const status = await fetchQueueStatus(base, requestId);
+          applyQueueStatus(status);
+        }, 2000);
+
         const response = await fetch(`${base}/generate`, {
           method: "POST",
           body: payload,
@@ -657,13 +876,34 @@
         placeholderEl.style.display = "none";
         downloadEl.href = currentUrl;
         downloadEl.style.display = "inline-flex";
-        setStatus("已完成，视频加载成功。", "ready");
+        setStatus("结果已返回，正在暂停任务。", "loading");
+        await callTaskControlApi("pause", openApiToken);
+        pausedTask = true;
+        setStatus("已完成，视频加载成功，任务已暂停。", "ready");
       } catch (error) {
+        requestError = error;
         setStatus(`请求失败：${error.message}`, "error");
       } finally {
         if (queueTimer) {
           window.clearInterval(queueTimer);
         }
+
+        if (recoveredTask && !pausedTask) {
+          try {
+            await callTaskControlApi("pause", openApiToken);
+            pausedTask = true;
+            if (requestError) {
+              setStatus(`请求失败：${requestError.message}（任务已自动暂停）`, "error");
+            }
+          } catch (pauseError) {
+            if (requestError) {
+              setStatus(`请求失败：${requestError.message}；暂停任务失败：${pauseError.message}`, "error");
+            } else {
+              setStatus(`暂停任务失败：${pauseError.message}`, "error");
+            }
+          }
+        }
+
         buttonEl.disabled = false;
       }
     });
